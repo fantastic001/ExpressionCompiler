@@ -2,7 +2,8 @@
 module Lexer (Token(..), tokenize, removespace) where 
 
 data Token = Identifier String | KeyWord String | Number Int | StringConstant String | 
-             PlusOperator | MinusOperator | DivideOperator | MultiplyOperator | OpenP | ClosedP | Comma | Space deriving (Show, Eq)
+             PlusOperator | MinusOperator | DivideOperator | MultiplyOperator | OpenP | 
+	     ClosedP | Comma | Space | AssignmentOperator deriving (Show, Eq)
 
 takestring :: String -> (Token, String)
 takestring ('"':s) = (StringConstant "", s)
@@ -46,6 +47,7 @@ tokenize ('*':s) = MultiplyOperator : ( tokenize s )
 tokenize ('/':s) = DivideOperator : (tokenize s) 
 tokenize ('-':s) = MinusOperator : (tokenize s) 
 tokenize ('+':s) = PlusOperator : (tokenize s)
+tokenize ('=':s) = AssignmentOperator : (tokenize s)
 tokenize (x:s) 
               | '0' <= x && x <= '9' = let (t,l) = takenumber (x:s)  in (Number (strtonum t)):(tokenize l) 
               | ('a' <= x && x <= 'z') || ('A' <= x && x <= 'Z')  = let (t,l) = takeidentifier (x:s) in t:(tokenize l) 
