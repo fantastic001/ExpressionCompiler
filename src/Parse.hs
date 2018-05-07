@@ -22,8 +22,10 @@ instance Applicative Parse where
 instance Monad Parse where 
 	return x = Parse $ \tokens -> ParseResult tokens x
 	(Parse run) >>= f = Parse $ \tokens -> case run tokens of 
-		(ParseResult tokkens' x) -> let (Parse run') = f x in case run' tokens'
-		(ParseError l msg) -> ParseError l msg
+		(ParseResult tokens' x) -> let (Parse run') = f x in case run' tokens' of 
+			(ParseError l m) -> ParseError l m 
+			res -> res 
+		(ParseError l m) -> ParseError l m 
 
 
 data Factor = JustNumber Int | FactorExpression Expression deriving (Show)
@@ -36,8 +38,8 @@ accept = Parse $ \tokens -> case tokens of
 	[] -> ParseError 0 "Cannot take token"
 	t:ts -> ParseResult ts t 
 
-error :: String -> Parse ()
-error msg = Parse $ \token -> ParseError 0 msg
+cerror :: String -> Parse a
+cerror msg = Parse $ \token -> ParseError 0 msg
 
 expect :: Token -> Parse Token
 expect token = Parse $ \tokens -> case tokens of 
@@ -48,72 +50,77 @@ oneOf :: Int -> String -> [Parse a] -> Parse a
 oneOf l msg actions = Parse $ \tokens -> case actions of 
 	[] -> ParseError l msg
 	(Parse run):as -> case run tokens of 
-		(ParseError l m) -> let (Parse run') = oneOf as in run' tokens 
+		(ParseError l m) -> let (Parse run') = oneOf l msg as in run' tokens 
 		(ParseResult ts x) -> ParseResult ts x
 
 factor :: Parse Factor 
 factor = do 
 	t <- accept 
 	case t of 
-		Number n -> JustNumber n
+		Number n -> return $ JustNumber n
 		OpenP -> do 
 			expr <- expression 
 			expect ClosedP
-			return FactorExpression expr
-		_ -> error "Expected ( or number here"
+			return $ FactorExpression expr
+		_ -> cerror "Expected ( or number here"
 
 
 division = do 
 	f <- factor 
 	expect DivideOperator 
 	t <- term 
-	return DivisionTerm f t 
+	return $ DivisionTerm f t 
 
 multiplication = do 
 	f <- factor 
 	expect MultiplyOperator 
 	t <- term 
-	return MultiplicationTerm f t 
+	return $ MultiplicationTerm f t 
 
 factorterm = do 
 	f <- factor
-	return JustFactor f
+	return $ JustFactor f
 
 term :: Parse Term 
 term = oneOf 0 "Cannot pparse term" [division, multiplication, factorterm]
 
+expression :: Parse Expression 
 expression = oneOf 0 "Cannot parse expression" [sumexpression, termexpression, negativetermexpression]
 
+sumexpression :: Parse Expression 
 sumexpression = do 
 	t <- term 
 	op <- accept
 	e <- expression
 	case op of 
-		PlusOperator -> return SumExpression t e 
-		MinusOperator -> return DifferenceExpression t e 
-		_ -> error "Cannot parse expression as sum or difference"
+		PlusOperator -> return $ SumExpression t e 
+		MinusOperator -> return $ DifferenceExpression t e 
+		_ -> cerror "Cannot parse expression as sum or difference"
 
-
+termexpression :: Parse Expression 
 termexpression = do 
 	t <- term 
-	return JustTerm t 
+	return $ JustTerm t 
 
 
+negativetermexpression :: Parse Expression 
 negativetermexpression = do 
 	expect (MinusOperator) 
 	t <- term 
-	return NegativeTerm t 
+	return $ NegativeTerm t 
 
 
 data Statement = Assignment String Expression 
 
+assignment :: Parse Statement
 assignment = do 
 	t <- accept 
 	case t of 
 		(Identifier identifier) -> do 
 			expect AssignmentOperator 
 			expr <- expression 
-			return Assignment identifier expr
+			return $ Assignment identifier expr
+		_ -> cerror "Identifier expected"
 
-compile :: String -> Parse Statement -> ParseResult
+compile :: String -> Parse Statement -> ParseResult Statement
 compile s (Parse run) = run ((removespace . tokenize) s)

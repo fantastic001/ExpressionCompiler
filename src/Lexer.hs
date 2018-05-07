@@ -1,4 +1,3 @@
-
 module Lexer (Token(..), tokenize, removespace) where 
 
 data Token = Identifier String | KeyWord String | Number Int | StringConstant String | 
