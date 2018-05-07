@@ -29,7 +29,8 @@ instance Monad Parse where
 
 
 data Factor = JustNumber Int | JustIdentifier String | 
-	FunctionCall Factor [Expression] | FactorExpression Expression deriving (Show)
+	FunctionCall Factor [Expression] | FactorExpression Expression |
+	JustList ListExpression deriving (Show)
 data Term = MultiplicationTerm Factor Term | DivisionTerm Factor Term | JustFactor Factor deriving (Show)
 data LambdaArgument = LambdaArgument String deriving (Show)
 data Expression = SumExpression Term Expression | DifferenceExpression Term Expression | JustTerm Term | NegativeTerm Term  |
@@ -101,8 +102,33 @@ functioncall = do
 		_ -> cerror "Identifier or expression expected"
 
 
+data ListExpression = ElementList Expression ListExpression | EmptyList deriving (Show)
+expressionlist :: Parse ListExpression 
+expressionlist = do 
+	oneOf 0 "Cannot parse list of expressions" [
+		(do 
+			expect ListEnd 
+			return EmptyList
+			),
+		(do 
+			e <- expression 
+			op <- accept 
+			case op of 
+				Comma -> do 
+					rest <- expressionlist
+					return $ ElementList e rest
+				ListEnd -> return $ ElementList e EmptyList
+				_ -> cerror "Expected comma or closed list bracket"
+			)
+		]
+listfactor :: Parse Factor 
+listfactor = do 
+	expect ListBegin 
+	l <- expressionlist 
+	return $ JustList l
+
 factor :: Parse Factor 
-factor = oneOf 0 "Cannot parse factor" [functioncall, factorexpression]
+factor = oneOf 0 "Cannot parse factor" [functioncall, factorexpression, listfactor]
 
 division = do 
 	f <- factor 
