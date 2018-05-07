@@ -33,7 +33,7 @@ data Factor = JustNumber Int | JustIdentifier String |
 data Term = MultiplicationTerm Factor Term | DivisionTerm Factor Term | JustFactor Factor deriving (Show)
 data LambdaArgument = LambdaArgument String deriving (Show)
 data Expression = SumExpression Term Expression | DifferenceExpression Term Expression | JustTerm Term | NegativeTerm Term  |
-	Lambda [LambdaArgument] Expression deriving (Show)
+	Lambda [LambdaArgument] Scope deriving (Show)
 
 
 accept :: Parse Token 
@@ -138,8 +138,8 @@ lambda = do
 	expect (OpenP)
 	args <- lambdaarguments
 	expect (AssignmentOperator)
-	expr <- expression
-	return $ Lambda args expr
+	s <- scope
+	return $ Lambda args s
 
 expression :: Parse Expression 
 expression = oneOf 0 "Cannot parse expression" [
@@ -172,7 +172,7 @@ negativetermexpression = do
 	return $ NegativeTerm t 
 
 
-data Statement = Assignment String Expression deriving (Show)
+data Statement = Assignment String Expression | JustExpression Expression deriving (Show)
 
 assignment :: Parse Statement
 assignment = do 
@@ -184,8 +184,59 @@ assignment = do
 			return $ Assignment identifier expr
 		_ -> cerror "Identifier expected"
 
-parse :: String -> Parse Statement -> ParseResult Statement
+statement :: Parse Statement
+statement = oneOf 0 "Cannot parse statement" [
+	assignment, 
+	( do  
+		expr <- expression 
+		return $ JustExpression expr
+		)
+	]
+
+data Scope = StatementList [Statement] | JustStatement Statement deriving (Show)
+
+statementlist = do 
+	sl <- oneOf 0 "Cannotparse statement list" [
+		(do 
+			expect ClosedScope 
+			return []
+			),
+		(do
+			stmt <- statement 
+			rest <- statementlist
+			return $ stmt : rest)
+		]
+	return sl 
+scope :: Parse Scope 
+scope = do 
+	sc <- oneOf 0 "Cannot parse scope" [
+		( do 
+			expect OpenScope 
+			stmts <- statementlist
+			return $ StatementList $ stmts
+			),
+		(do 
+			s <- statement
+			return $ JustStatement s
+			)
+		]
+	return sc
+
+data Program = Program [Statement] deriving (Show)
+program :: Parse Program 
+program = do 
+	p <- oneOf 0 "Cannot parse program" [
+		(do 
+			stmt <- statement 
+			(Program rest) <- program
+			return $ Program $ stmt : rest
+			),
+		(return $ Program [])
+		]
+	return $ p
+
+parse :: String -> Parse Program -> ParseResult Program
 parse s (Parse run) = run ((removespace . tokenize) s)
 
-compile :: String -> ParseResult Statement 
-compile s = parse s assignment 
+compile :: String -> ParseResult Program
+compile s = parse s program 
