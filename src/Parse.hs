@@ -28,9 +28,12 @@ instance Monad Parse where
 		(ParseError l m) -> ParseError l m 
 
 
-data Factor = JustNumber Int | FactorExpression Expression deriving (Show)
+data Factor = JustNumber Int | JustIdentifier String | 
+	FunctionCall Factor [Expression] | FactorExpression Expression deriving (Show)
 data Term = MultiplicationTerm Factor Term | DivisionTerm Factor Term | JustFactor Factor deriving (Show)
-data Expression = SumExpression Term Expression | DifferenceExpression Term Expression | JustTerm Term | NegativeTerm Term  deriving (Show)
+data LambdaArgument = LambdaArgument String deriving (Show)
+data Expression = SumExpression Term Expression | DifferenceExpression Term Expression | JustTerm Term | NegativeTerm Term  |
+	Lambda [LambdaArgument] Expression deriving (Show)
 
 
 accept :: Parse Token 
@@ -53,17 +56,53 @@ oneOf l msg actions = Parse $ \tokens -> case actions of
 		(ParseError l m) -> let (Parse run') = oneOf l msg as in run' tokens 
 		(ParseResult ts x) -> ParseResult ts x
 
-factor :: Parse Factor 
-factor = do 
+factorexpression :: Parse Factor 
+factorexpression = do 
 	t <- accept 
 	case t of 
 		Number n -> return $ JustNumber n
+		Identifier i -> return $ JustIdentifier i 
 		OpenP -> do 
 			expr <- expression 
 			expect ClosedP
 			return $ FactorExpression expr
 		_ -> cerror "Expected ( or number here"
 
+functionnoarguments :: Parse [Expression]
+functionnoarguments = do 
+	expect ClosedP
+	return [] 
+
+functionarguments :: Parse [Expression]
+functionarguments = do 
+	arg <- expression 
+	next <- accept 
+	case next of 
+		ClosedP -> return [arg]
+		Comma -> do 
+			rest <- functionarguments 
+			return $ arg : rest
+		_ -> cerror "Unexpected token (expecting , or ))"
+
+functioncall :: Parse Factor 
+functioncall = do 
+	func <- accept 
+	case func of 
+		OpenP -> do 
+			fexpr <- expression 
+			expect ClosedP
+			expect OpenP 
+			args <- oneOf 0 "Cannot parse function arguments" [functionnoarguments, functionarguments]
+			return $ FunctionCall (FactorExpression fexpr) args 
+		(Identifier i) -> do 
+			expect OpenP 
+			args <- oneOf 0 "Cannot parse function arguments" [functionnoarguments, functionarguments]
+			return $ FunctionCall (JustIdentifier i) args
+		_ -> cerror "Identifier or expression expected"
+
+
+factor :: Parse Factor 
+factor = oneOf 0 "Cannot parse factor" [functioncall, factorexpression]
 
 division = do 
 	f <- factor 
@@ -84,8 +123,31 @@ factorterm = do
 term :: Parse Term 
 term = oneOf 0 "Cannot pparse term" [division, multiplication, factorterm]
 
+lambdaarguments :: Parse [LambdaArgument]
+lambdaarguments = do 
+	i <- accept 
+	case i of 
+		(Identifier identifier) -> do 
+			rest <- lambdaarguments 
+			return $ (LambdaArgument identifier) : rest
+		(ClosedP) -> return []
+
+lambda :: Parse Expression 
+lambda = do 
+	expect (KeyWord "lambda")
+	expect (OpenP)
+	args <- lambdaarguments
+	expect (AssignmentOperator)
+	expr <- expression
+	return $ Lambda args expr
+
 expression :: Parse Expression 
-expression = oneOf 0 "Cannot parse expression" [sumexpression, termexpression, negativetermexpression]
+expression = oneOf 0 "Cannot parse expression" [
+	sumexpression
+	, termexpression
+	, negativetermexpression
+	, lambda
+	]
 
 sumexpression :: Parse Expression 
 sumexpression = do 
