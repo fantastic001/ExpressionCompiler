@@ -4,7 +4,7 @@ import Lexer
 import Control.Applicative 
 
 type LineNumber = Int 
-data ParseResult a = ParseResult [Token] a | ParseError LineNumber String
+data ParseResult a = ParseResult [Token] a | ParseError LineNumber String deriving (Show)
 data Parse a = Parse ([Token] -> ParseResult a)
 
 instance Functor Parse where 
@@ -110,7 +110,7 @@ negativetermexpression = do
 	return $ NegativeTerm t 
 
 
-data Statement = Assignment String Expression 
+data Statement = Assignment String Expression deriving (Show)
 
 assignment :: Parse Statement
 assignment = do 
@@ -122,5 +122,8 @@ assignment = do
 			return $ Assignment identifier expr
 		_ -> cerror "Identifier expected"
 
-compile :: String -> Parse Statement -> ParseResult Statement
-compile s (Parse run) = run ((removespace . tokenize) s)
+parse :: String -> Parse Statement -> ParseResult Statement
+parse s (Parse run) = run ((removespace . tokenize) s)
+
+compile :: String -> ParseResult Statement 
+compile s = parse s assignment 
